@@ -3,7 +3,7 @@ using TorneSe.CapturaPagamento.Api.Extensions;
 var builder = WebApplication.CreateBuilder(args);
 
 // Adicionar serviços da aplicação
-builder.Services.AddApplicationServices();
+builder.Services.AddApplicationServices(builder.Configuration);
 
 // Registrar middleware de tratamento de exceções
 builder.Services.AddGlobalExceptionHandler();

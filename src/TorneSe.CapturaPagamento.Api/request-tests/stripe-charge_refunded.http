@@ -1,0 +1,25 @@
+### Teste de Webhook - Charge Refunded
+POST https://localhost:5001/webhooks/stripe
+Content-Type: application/json
+Stripe-Signature: whsec_test_signature_12345
+
+{
+  "id": "evt_test_charge_refunded_001",
+  "object": "event",
+  "type": "charge.refunded",
+  "created": 1678912345,
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "ch_test_12345",
+      "object": "charge",
+      "amount": 5000,
+      "amount_refunded": 5000,
+      "currency": "brl",
+      "customer": "cus_test_12345",
+      "payment_intent": "pi_test_12345",
+      "refunded": true,
+      "status": "succeeded"
+    }
+  }
+}

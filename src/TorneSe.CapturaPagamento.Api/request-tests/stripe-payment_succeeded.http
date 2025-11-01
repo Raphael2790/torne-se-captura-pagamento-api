@@ -1,0 +1,29 @@
+### Teste de Webhook - Payment Intent Succeeded
+POST https://localhost:5001/webhooks/stripe
+Content-Type: application/json
+Stripe-Signature: whsec_test_signature_12345
+
+{
+  "id": "evt_test_payment_succeeded_001",
+  "object": "event",
+  "type": "payment_intent.succeeded",
+  "created": 1678912345,
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "pi_test_12345",
+      "object": "payment_intent",
+      "amount": 5000,
+      "currency": "brl",
+      "customer": "cus_test_12345",
+      "status": "succeeded",
+      "charges": {
+        "data": [
+          {
+            "id": "ch_test_12345"
+          }
+        ]
+      }
+    }
+  }
+}

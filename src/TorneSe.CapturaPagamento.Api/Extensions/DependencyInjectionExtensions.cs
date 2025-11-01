@@ -1,4 +1,8 @@
 using System.Reflection;
+using Amazon.SQS;
+using TorneSe.CapturaPagamento.Api.Abstracoes.Infraestrutura;
+using TorneSe.CapturaPagamento.Api.Configuration;
+using TorneSe.CapturaPagamento.Api.Infraestrutura.Services;
 
 namespace TorneSe.CapturaPagamento.Api.Extensions;
 
@@ -10,7 +14,7 @@ public static class DependencyInjectionExtensions
     /// <summary>
     /// Adiciona os serviços da aplicação no container de DI.
     /// </summary>
-    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddLogging(builder =>
         {
@@ -30,9 +34,15 @@ public static class DependencyInjectionExtensions
         // Registrar AutoMapper para mapeamentos
         services.AddAutoMapper(Assembly.GetExecutingAssembly());
 
-        // Aqui você pode adicionar seus serviços customizados
-        // services.TryAddScoped<IDbService, DbService>();
-        // services.TryAddScoped<IMessageService, MessageService>();
+        // Configurar Options Pattern
+        services.Configure<AwsOptions>(configuration.GetSection("Aws"));
+        services.Configure<StripeOptions>(configuration.GetSection("Stripe"));
+
+        // Registrar AWS SQS
+        services.AddAWSService<IAmazonSQS>();
+
+        // Registrar serviços de infraestrutura
+        services.AddScoped<IPaymentEventPublisher, SqsPaymentEventPublisher>();
 
         return services;
     }
