@@ -1,3 +1,4 @@
+using TorneSe.CapturaPagamento.Api.Controllers;
 using TorneSe.CapturaPagamento.Api.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +23,10 @@ app.ConfigureApp();
 // Configurar interface do Swagger
 app.UseSwaggerInterface();
 
-app.MapGet("/", () => "Welcome to TorneSe Captura Pagamento API - Running on AWS Lambda");
+// Mapear endpoints de webhooks
+app.MapWebhooksEndpoints();
+
+// Mapear endpoint de health check
+app.MapHealthEndpoint();
 
 app.Run();
