@@ -1,10 +1,18 @@
-### Teste de Webhook - Evento Genérico
-POST https://localhost:5001/webhooks/stripe
+@host = http://localhost:5000
+@stripeSignature = whsec_test_signature_12345
+
+### Health Check
+GET {{host}}/health
+
+###
+
+### Teste de Webhook - Customer Created
+POST {{host}}/webhooks/stripe
 Content-Type: application/json
-Stripe-Signature: whsec_test_signature_12345
+Stripe-Signature: {{stripeSignature}}
 
 {
-  "id": "evt_test_generic_001",
+  "id": "evt_test_customer_created_001",
   "object": "event",
   "type": "customer.created",
   "created": 1678912345,
@@ -20,5 +28,55 @@ Stripe-Signature: whsec_test_signature_12345
 }
 
 ###
-### Health Check
-GET https://localhost:5001/health
+
+### Teste de Webhook - Charge Succeeded
+POST {{host}}/webhooks/stripe
+Content-Type: application/json
+Stripe-Signature: {{stripeSignature}}
+
+{
+  "id": "evt_test_charge_succeeded_001",
+  "object": "event",
+  "type": "charge.succeeded",
+  "created": 1678912345,
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "ch_test_67890",
+      "object": "charge",
+      "amount": 7500,
+      "currency": "brl",
+      "customer": "cus_test_67890",
+      "payment_intent": "pi_test_67890",
+      "status": "succeeded"
+    }
+  }
+}
+
+###
+
+### Teste de Webhook - Payment Intent Failed
+POST {{host}}/webhooks/stripe
+Content-Type: application/json
+Stripe-Signature: {{stripeSignature}}
+
+{
+  "id": "evt_test_payment_failed_001",
+  "object": "event",
+  "type": "payment_intent.payment_failed",
+  "created": 1678912345,
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "pi_test_failed_001",
+      "object": "payment_intent",
+      "amount": 3000,
+      "currency": "brl",
+      "customer": "cus_test_failed",
+      "status": "requires_payment_method",
+      "last_payment_error": {
+        "message": "Your card was declined."
+      }
+    }
+  }
+}

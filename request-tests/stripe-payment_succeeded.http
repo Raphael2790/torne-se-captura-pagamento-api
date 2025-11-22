@@ -1,7 +1,10 @@
+@host = http://localhost:5000
+@stripeSignature = whsec_test_signature_12345
+
 ### Teste de Webhook - Payment Intent Succeeded
-POST https://localhost:5001/webhooks/stripe
+POST {{host}}/webhooks/stripe
 Content-Type: application/json
-Stripe-Signature: whsec_test_signature_12345
+Stripe-Signature: {{stripeSignature}}
 
 {
   "id": "evt_test_payment_succeeded_001",
