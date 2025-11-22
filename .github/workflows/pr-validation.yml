@@ -1,0 +1,236 @@
+name: PR Validation and Creation
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'bug/**'
+      - 'fix/**'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'src/TorneSe.CapturaPagamento.Api'
+  
+jobs:
+  validate:
+    name: Validate Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Build project
+        run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+        
+      - name: Run unit tests
+        run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        continue-on-error: false
+        
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Unit Test Results
+          path: '**/*.trx'
+          reporter: dotnet-trx
+          fail-on-error: true
+          
+      - name: Code coverage
+        run: |
+          dotnet test --configuration Release \
+            --no-build \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage
+        continue-on-error: true
+        
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: ./coverage/**/*.xml
+          retention-days: 7
+
+  create-pull-request:
+    name: Create Pull Request
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Extract branch info
+        id: branch_info
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          BRANCH_TYPE="${BRANCH_NAME%%/*}"
+          BRANCH_TITLE="${BRANCH_NAME#*/}"
+          
+          # Convert branch name to PR title
+          PR_TITLE=$(echo "$BRANCH_TITLE" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g')
+          
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "branch_type=$BRANCH_TYPE" >> $GITHUB_OUTPUT
+          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+          
+      - name: Check if PR already exists
+        id: check_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_EXISTS=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq length)
+          echo "pr_exists=$PR_EXISTS" >> $GITHUB_OUTPUT
+          
+      - name: Create Pull Request
+        if: steps.check_pr.outputs.pr_exists == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH_TYPE="${{ steps.branch_info.outputs.branch_type }}"
+          PR_TITLE="${{ steps.branch_info.outputs.pr_title }}"
+          
+          # Define PR labels based on branch type
+          case "$BRANCH_TYPE" in
+            feature)
+              LABELS="enhancement,feature"
+              EMOJI="✨"
+              ;;
+            bug)
+              LABELS="bug,bugfix"
+              EMOJI="🐛"
+              ;;
+            fix)
+              LABELS="fix,hotfix"
+              EMOJI="🔧"
+              ;;
+            *)
+              LABELS="enhancement"
+              EMOJI="📝"
+              ;;
+          esac
+          
+          # Create PR body
+          PR_BODY="## ${EMOJI} ${BRANCH_TYPE^}: ${PR_TITLE}
+
+          ### Descrição
+          <!-- Descreva as mudanças realizadas -->
+          
+          ### Tipo de Mudança
+          - [ ] 🐛 Bug fix (correção de bug)
+          - [ ] ✨ Nova feature (nova funcionalidade)
+          - [ ] 🔧 Fix (correção de código)
+          - [ ] 📝 Documentação
+          - [ ] ♻️ Refatoração
+          - [ ] ⚡ Melhoria de performance
+          - [ ] ✅ Testes
+          
+          ### Checklist
+          - [ ] Código compilando sem erros
+          - [ ] Testes unitários passando
+          - [ ] Código revisado
+          - [ ] Documentação atualizada (se necessário)
+          - [ ] Sem conflitos com a branch main
+          
+          ### Testes Realizados
+          <!-- Descreva os testes realizados -->
+          
+          ### Screenshots/Logs (se aplicável)
+          <!-- Adicione screenshots ou logs relevantes -->
+          
+          ---
+          **Branch:** \`${{ steps.branch_info.outputs.branch_name }}\`
+          **Commit:** \`${{ github.sha }}\`
+          **Criado automaticamente pelo workflow**"
+          
+          gh pr create \
+            --title "${EMOJI} ${BRANCH_TYPE^}: ${PR_TITLE}" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "${{ steps.branch_info.outputs.branch_name }}" \
+            --label "$LABELS"
+            
+      - name: Add PR comment
+        if: steps.check_pr.outputs.pr_exists == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 2  # Wait for PR to be created
+          PR_NUMBER=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq '.[0].number')
+          
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr comment $PR_NUMBER --body "✅ **Validação Automática Concluída**
+            
+            - ✅ Build: Sucesso
+            - ✅ Testes Unitários: Todos passando
+            - ✅ Cobertura de Código: Disponível nos artefatos
+            
+            Este PR está pronto para revisão! 🚀"
+          fi
+          
+      - name: PR already exists
+        if: steps.check_pr.outputs.pr_exists != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq '.[0].number')
+          echo "::notice::Pull Request #$PR_NUMBER already exists for branch ${{ steps.branch_info.outputs.branch_name }}"
+          
+          gh pr comment $PR_NUMBER --body "🔄 **Novo Push Detectado**
+          
+          Validação automática executada com sucesso:
+          - ✅ Build: OK
+          - ✅ Testes: Passando
+          - 📊 Commit: \`${{ github.sha }}\`"
+
+  summary:
+    name: Workflow Summary
+    needs: [validate, create-pull-request]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Create summary
+        run: |
+          echo "## PR Validation Summary 🔍" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${GITHUB_REF#refs/heads/}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.validate.result }}" == "success" ]; then
+            echo "### ✅ Validation: Success" >> $GITHUB_STEP_SUMMARY
+            echo "- Build completed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- All unit tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "- Code coverage report generated" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Validation: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the logs for details" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.create-pull-request.result }}" == "success" ]; then
+            echo "### ✅ Pull Request: Created/Updated" >> $GITHUB_STEP_SUMMARY
+            echo "A Pull Request has been created or updated for this branch" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.create-pull-request.result }}" == "skipped" ]; then
+            echo "### ℹ️ Pull Request: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "Manual workflow run - PR creation skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ⚠️ Pull Request: Issue" >> $GITHUB_STEP_SUMMARY
+            echo "There was an issue creating/updating the PR" >> $GITHUB_STEP_SUMMARY
+          fi

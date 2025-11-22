@@ -1,10 +1,34 @@
 # Guia de Deploy - TorneSe Captura Pagamento API
 
+## 🔀 GitFlow - Estrutura de Workflows
+
+Este projeto utiliza **GitFlow** com dois workflows automatizados:
+
+### 1. 🔍 PR Validation (`pr-validation.yml`)
+**Branches:** `feature/**`, `bug/**`, `fix/**`
+
+- ✅ Valida código (build + testes)
+- ✅ Cria Pull Request automaticamente
+- ✅ Adiciona labels e comentários
+- ✅ Gera relatório de cobertura
+
+### 2. 🚀 Deploy to AWS Lambda (`deploy.yml`)
+**Branch:** `main`
+
+- ✅ Build e testes completos
+- ✅ Empacotamento e deploy na AWS
+- ✅ Configuração de variáveis de ambiente
+- ✅ Publicação de versão
+
+📖 **[Guia Completo do GitFlow](.github/features/GITFLOW-GUIDE.md)**
+
 ## Deploy Automatizado com GitHub Actions
 
-Este projeto possui um workflow de CI/CD configurado que realiza o deploy automaticamente na AWS Lambda quando há push para a branch `main`.
+Este projeto possui workflows de CI/CD que realizam validação e deploy automaticamente.
 
-### Workflow: `.github/workflows/deploy.yml`
+### Workflow de Deploy: `.github/workflows/deploy.yml`
+
+**Trigger:** Push para branch `main` (após merge de PR)
 
 O workflow executa as seguintes etapas:
 
@@ -22,6 +46,23 @@ O workflow executa as seguintes etapas:
    - Atualização do código da Lambda
    - Configuração das variáveis de ambiente
    - Publicação de nova versão
+
+### Workflow de Validação: `.github/workflows/pr-validation.yml`
+
+**Trigger:** Push para branches `feature/**`, `bug/**`, `fix/**`
+
+O workflow executa:
+
+1. **Validate**
+   - Build e testes unitários
+   - Geração de cobertura de código
+   - Upload de artefatos
+
+2. **Create Pull Request**
+   - Criação automática de PR para `main`
+   - Template de PR preenchido
+   - Labels automáticas
+   - Comentários de validação
 
 ### GitHub Secrets Necessários
 
