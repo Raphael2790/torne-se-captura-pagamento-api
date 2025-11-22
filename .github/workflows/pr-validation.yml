@@ -86,7 +86,7 @@ jobs:
       - name: Check if PR already exists
         id: check_pr
         env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           PR_EXISTS=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq length)
           echo "pr_exists=$PR_EXISTS" >> $GITHUB_OUTPUT
@@ -94,7 +94,7 @@ jobs:
       - name: Create Pull Request
         if: steps.check_pr.outputs.pr_exists == '0'
         env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           BRANCH_TYPE="${{ steps.branch_info.outputs.branch_type }}"
           PR_TITLE="${{ steps.branch_info.outputs.pr_title }}"
@@ -149,7 +149,7 @@ jobs:
           **Tipo:** ${BRANCH_TYPE}
           **Criado automaticamente pelo workflow**"
           
-          # Create PR without labels (labels will be added after if they exist)
+          # Create PR
           gh pr create \
             --title "${EMOJI} ${BRANCH_TYPE^}: ${PR_TITLE}" \
             --body "$PR_BODY" \
@@ -159,7 +159,7 @@ jobs:
       - name: Add labels to PR
         if: steps.check_pr.outputs.pr_exists == '0'
         env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         continue-on-error: true
         run: |
           sleep 2  # Wait for PR to be created

@@ -31,11 +31,16 @@ pull request create failed: GraphQL: GitHub Actions is not permitted to create o
 
 4. **Permissions (Repository permissions):**
 
-   | Permission | Access | Motivo |
-   |------------|--------|--------|
-   | **Contents** | ✅ Read-only | Ler código do repositório |
-   | **Pull requests** | ✅ Read and write | Criar e gerenciar PRs |
-   | **Metadata** | ✅ Read-only | Acesso básico (auto-selecionado) |
+   ⚠️ **IMPORTANTE:** Marque EXATAMENTE estas permissões:
+
+   | Permission | Access | ❗ Obrigatório |
+   |------------|--------|----------------|
+   | **Contents** | ✅ **Read and write** | ✅ SIM - Necessário para criar PRs |
+   | **Pull requests** | ✅ **Read and write** | ✅ SIM - Criar e gerenciar PRs |
+   | **Metadata** | ✅ Read-only | ✅ AUTO (selecionado automaticamente) |
+   | **Workflows** | ✅ **Read and write** | ✅ SIM - Acionar workflows em PRs |
+
+   **⚠️ ATENÇÃO:** `Contents` deve ser **Read and write**, não apenas Read-only!
 
 5. **Clique em:** `Generate token`
 
@@ -109,7 +114,29 @@ Quando o token expirar (você receberá email), repita o processo:
 
 ## ❓ Troubleshooting
 
-### Erro: "Resource not accessible by personal access token"
+### ⚠️ Erro: "Resource not accessible by personal access token"
+
+**Causa:** Token sem a permissão `Contents: Read and write`
+
+**Solução DEFINITIVA:**
+1. **Delete o token atual:** https://github.com/settings/tokens
+2. **Crie um NOVO token** com as permissões corretas:
+   - ✅ **Contents: Read and write** (NÃO Read-only!)
+   - ✅ **Pull requests: Read and write**
+   - ✅ **Workflows: Read and write** (NOVO - necessário!)
+3. **Atualize o secret** `PAT_TOKEN` com o novo token
+4. **Teste novamente** com um novo push
+
+**📸 Checklist Visual:**
+```
+Repository permissions:
+├── ✅ Contents: Read and write        ← DEVE SER "Read and write"!
+├── ✅ Pull requests: Read and write
+├── ✅ Workflows: Read and write       ← ADICIONE esta permissão!
+└── ✅ Metadata: Read-only (automático)
+```
+
+### Erro: "Resource not accessible by integration"
 
 **Causa:** Token sem permissões corretas
 
@@ -144,11 +171,17 @@ Quando o token expirar (você receberá email), repita o processo:
 
 ## 🎯 Resumo Rápido
 
-```
+**⚠️ ATENÇÃO: Permissões OBRIGATÓRIAS para o token:**
+
+```text
 1. Criar Token → https://github.com/settings/tokens?type=beta
    - Nome: GitFlow Automation
    - Repo: torne-se-captura-pagamento-api
-   - Permissions: Contents (read), Pull requests (read/write)
+   - Permissions (EXATAMENTE estas):
+     ✅ Contents: Read and write (NÃO Read-only!)
+     ✅ Pull requests: Read and write
+     ✅ Workflows: Read and write
+     ✅ Metadata: Read-only (automático)
 
 2. Adicionar Secret → repo/settings/secrets/actions
    - Name: PAT_TOKEN
