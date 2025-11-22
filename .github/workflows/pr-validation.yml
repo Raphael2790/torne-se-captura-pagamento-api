@@ -2,7 +2,10 @@ name: Pull Request Validation
 
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches:
+      - 'feature/**'
+      - 'bug/**'
+      - 'fix/**'
 
 env:
   DOTNET_VERSION: '8.0.x'
