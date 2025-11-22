@@ -1,8 +1,99 @@
 # Guia de Deploy - TorneSe Captura Pagamento API
 
-## Scripts de Empacotamento
+## Deploy Automatizado com GitHub Actions
 
-Este diretório contém scripts para empacotar a aplicação para deploy na AWS Lambda.
+Este projeto possui um workflow de CI/CD configurado que realiza o deploy automaticamente na AWS Lambda quando há push para a branch `main`.
+
+### Workflow: `.github/workflows/deploy.yml`
+
+O workflow executa as seguintes etapas:
+
+1. **Build and Test**
+   - Checkout do código
+   - Setup do .NET 8.0
+   - Restore de dependências
+   - Build do projeto
+   - Execução de testes unitários
+   - Publicação dos resultados dos testes
+
+2. **Package and Deploy**
+   - Empacotamento da aplicação
+   - Upload do pacote para S3
+   - Atualização do código da Lambda
+   - Configuração das variáveis de ambiente
+   - Publicação de nova versão
+
+### GitHub Secrets Necessários
+
+Configure os seguintes secrets no GitHub (Settings → Secrets and variables → Actions):
+
+#### Credenciais AWS (Obrigatórios)
+
+| Secret | Descrição | Exemplo |
+|--------|-----------|---------|
+| `AWS_ACCESS_KEY_ID` | Access Key ID da AWS | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SECRET_ACCESS_KEY` | Secret Access Key da AWS | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
+
+#### Variáveis de Ambiente da Lambda (Obrigatórios)
+
+| Secret | Descrição | Exemplo |
+|--------|-----------|---------|
+| `SQS_QUEUE_URL` | URL completa da fila SQS | `https://sqs.us-east-1.amazonaws.com/123456789/payment-events` |
+| `APP_ENV` | Ambiente de execução | `Production` |
+| `LOG_LEVEL` | Nível de log | `Information` |
+| `STRIPE_SIGNING_SECRET` | Secret do webhook do Stripe | `whsec_...` |
+
+### Variáveis de Ambiente do Workflow
+
+Estas variáveis estão definidas no arquivo `deploy.yml` e podem ser ajustadas conforme necessário:
+
+| Variável | Descrição | Valor Padrão |
+|----------|-----------|--------------|
+| `AWS_REGION` | Região AWS | `us-east-1` |
+| `DOTNET_VERSION` | Versão do .NET | `8.0.x` |
+| `PROJECT_PATH` | Caminho do projeto | `src/TorneSe.CapturaPagamento.Api` |
+| `S3_BUCKET` | Bucket S3 para deployments | `torne-se-captura-pagamento-api-deployments` |
+| `LAMBDA_FUNCTION_NAME` | Nome da função Lambda | `TorneSe-CapturaPagamento-Api` |
+
+### Como Fazer Deploy
+
+#### Deploy Automático
+1. Faça commit e push para a branch `main`
+2. O workflow será executado automaticamente
+3. Acompanhe o progresso em Actions → Deploy to AWS Lambda
+
+#### Deploy Manual
+1. Acesse Actions → Deploy to AWS Lambda
+2. Clique em "Run workflow"
+3. Selecione a branch e clique em "Run workflow"
+
+### Pré-requisitos na AWS
+
+Antes de executar o workflow, certifique-se de que os seguintes recursos existem na AWS:
+
+1. **Função Lambda**
+   - Nome: `TorneSe-CapturaPagamento-Api`
+   - Runtime: .NET 8 (Amazon Linux 2)
+   - Handler: `TorneSe.CapturaPagamento.Api`
+   - IAM Role com permissões para:
+     - Logs (CloudWatch)
+     - SQS (SendMessage)
+
+2. **Fila SQS**
+   - Fila criada para receber eventos de pagamento
+   - URL da fila configurada no secret `SQS_QUEUE_URL`
+
+3. **API Gateway** (Opcional)
+   - HTTP API configurado para invocar a Lambda
+   - Rota: `POST /webhooks/stripe`
+
+4. **Bucket S3** (Criado automaticamente)
+   - Nome: `torne-se-captura-pagamento-api-deployments`
+   - Criado automaticamente pelo workflow se não existir
+
+## Scripts de Empacotamento Manual
+
+Para deploy manual, utilize os scripts de empacotamento:
 
 ### Para Windows (PowerShell)
 
@@ -17,25 +108,19 @@ chmod +x ./deploy/package-linux.sh
 ./deploy/package-linux.sh
 ```
 
-## Variáveis de Ambiente Necessárias
+## Variáveis de Ambiente da Lambda
 
-Configure as seguintes variáveis de ambiente na AWS Lambda:
+Configure as seguintes variáveis de ambiente na AWS Lambda (gerenciadas automaticamente pelo workflow):
 
 ### Obrigatórias
 
 | Variável | Descrição | Exemplo |
 |----------|-----------|---------|
 | `AWS_REGION` | Região AWS para SQS | `us-east-1` |
-| `Aws__SqsQueueUrl` | URL completa da fila SQS | `https://sqs.us-east-1.amazonaws.com/123456789/payment-events` |
-| `Stripe__SigningSecret` | Secret do webhook do Stripe | `whsec_...` |
-
-### Opcionais
-
-| Variável | Descrição | Padrão |
-|----------|-----------|--------|
-| `AppEnvironment` | Ambiente de execução | `Production` |
-| `LogLevel` | Nível de log | `Information` |
-| `Stripe__ValidateSignature` | Validar assinatura Stripe | `true` |
+| `SQS_QUEUE_URL` | URL completa da fila SQS | `https://sqs.us-east-1.amazonaws.com/123456789/payment-events` |
+| `APP_ENV` | Ambiente de execução | `Production` |
+| `LOG_LEVEL` | Nível de log | `Information` |
+| `STRIPE_SIGNING_SECRET` | Secret do webhook do Stripe | `whsec_...` |
 
 ## Estrutura da Lambda
 

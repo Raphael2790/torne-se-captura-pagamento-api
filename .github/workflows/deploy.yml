@@ -1,0 +1,159 @@
+name: Deploy to AWS Lambda
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'src/TorneSe.CapturaPagamento.Api'
+  S3_BUCKET: 'torne-se-captura-pagamento-api-deployments'
+  LAMBDA_FUNCTION_NAME: 'TorneSe-CapturaPagamento-Api'
+  
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Build project
+        run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+        
+      - name: Run tests
+        run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        continue-on-error: false
+        
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Test Results
+          path: '**/*.trx'
+          reporter: dotnet-trx
+          fail-on-error: true
+
+  package-and-deploy:
+    name: Package and Deploy to Lambda
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Install AWS Lambda Tools
+        run: dotnet tool install -g Amazon.Lambda.Tools
+        
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Publish application
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} \
+            --configuration Release \
+            --runtime linux-x64 \
+            --self-contained false \
+            --output ./publish
+            
+      - name: Create deployment package
+        run: |
+          cd publish
+          zip -r ../deployment-package.zip .
+          cd ..
+          
+      - name: Create S3 bucket if not exists
+        run: |
+          if ! aws s3 ls "s3://${{ env.S3_BUCKET }}" 2>&1 | grep -q 'NoSuchBucket'; then
+            echo "Bucket already exists"
+          else
+            aws s3 mb s3://${{ env.S3_BUCKET }} --region ${{ env.AWS_REGION }}
+          fi
+          
+      - name: Upload package to S3
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          PACKAGE_KEY="deployments/TorneSe.CapturaPagamento.Api-${TIMESTAMP}.zip"
+          aws s3 cp deployment-package.zip s3://${{ env.S3_BUCKET }}/${PACKAGE_KEY}
+          echo "PACKAGE_KEY=${PACKAGE_KEY}" >> $GITHUB_ENV
+          echo "S3_OBJECT_VERSION=$(aws s3api head-object --bucket ${{ env.S3_BUCKET }} --key ${PACKAGE_KEY} --query VersionId --output text)" >> $GITHUB_ENV
+          
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --s3-bucket ${{ env.S3_BUCKET }} \
+            --s3-key ${{ env.PACKAGE_KEY }} \
+            --region ${{ env.AWS_REGION }}
+            
+      - name: Wait for Lambda update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --region ${{ env.AWS_REGION }}
+            
+      - name: Update Lambda environment variables
+        run: |
+          aws lambda update-function-configuration \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --environment "Variables={
+              AWS_REGION=${{ env.AWS_REGION }},
+              SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }},
+              APP_ENV=${{ secrets.APP_ENV }},
+              LOG_LEVEL=${{ secrets.LOG_LEVEL }},
+              STRIPE_SIGNING_SECRET=${{ secrets.STRIPE_SIGNING_SECRET }}
+            }" \
+            --region ${{ env.AWS_REGION }}
+            
+      - name: Publish Lambda version
+        run: |
+          VERSION=$(aws lambda publish-version \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --description "Deployed on $(date +%Y-%m-%d) from commit ${{ github.sha }}" \
+            --region ${{ env.AWS_REGION }} \
+            --query Version \
+            --output text)
+          echo "LAMBDA_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "::notice::Lambda version ${VERSION} published successfully"
+          
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
+          echo "**Function:** ${{ env.LAMBDA_FUNCTION_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ env.LAMBDA_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** s3://${{ env.S3_BUCKET }}/${{ env.PACKAGE_KEY }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Environment Variables" >> $GITHUB_STEP_SUMMARY
+          echo "- AWS_REGION: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- APP_ENV: \${{ secrets.APP_ENV }}" >> $GITHUB_STEP_SUMMARY
+          echo "- LOG_LEVEL: \${{ secrets.LOG_LEVEL }}" >> $GITHUB_STEP_SUMMARY
