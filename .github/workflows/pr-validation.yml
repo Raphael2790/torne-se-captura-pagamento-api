@@ -8,6 +8,11 @@ on:
       - 'fix/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 env:
   DOTNET_VERSION: '8.0.x'
   PROJECT_PATH: 'src/TorneSe.CapturaPagamento.Api'
