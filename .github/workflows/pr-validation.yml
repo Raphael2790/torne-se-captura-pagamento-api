@@ -35,15 +35,6 @@ jobs:
       - name: Run unit tests
         run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
         continue-on-error: false
-        
-      - name: Publish test results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Unit Test Results
-          path: '**/*.trx'
-          reporter: dotnet-trx
-          fail-on-error: true
           
       - name: Code coverage
         run: |
