@@ -86,7 +86,7 @@ jobs:
       - name: Check if PR already exists
         id: check_pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           PR_EXISTS=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq length)
           echo "pr_exists=$PR_EXISTS" >> $GITHUB_OUTPUT
@@ -94,7 +94,7 @@ jobs:
       - name: Create Pull Request
         if: steps.check_pr.outputs.pr_exists == '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           BRANCH_TYPE="${{ steps.branch_info.outputs.branch_type }}"
           PR_TITLE="${{ steps.branch_info.outputs.pr_title }}"
@@ -159,7 +159,7 @@ jobs:
       - name: Add labels to PR
         if: steps.check_pr.outputs.pr_exists == '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         continue-on-error: true
         run: |
           sleep 2  # Wait for PR to be created
@@ -187,7 +187,7 @@ jobs:
       - name: Add PR comment
         if: steps.check_pr.outputs.pr_exists == '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           sleep 3  # Wait for PR to be created
           PR_NUMBER=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq '.[0].number')
@@ -208,7 +208,7 @@ jobs:
       - name: PR already exists
         if: steps.check_pr.outputs.pr_exists != '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           PR_NUMBER=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq '.[0].number')
           echo "::notice::Pull Request #$PR_NUMBER already exists for branch ${{ steps.branch_info.outputs.branch_name }}"
