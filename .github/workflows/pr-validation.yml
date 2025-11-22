@@ -1,11 +1,12 @@
 name: Pull Request Validation
 
 on:
-  pull_request:
+  push:
     branches:
       - 'feature/**'
       - 'bug/**'
       - 'fix/**'
+  workflow_dispatch:
 
 env:
   DOTNET_VERSION: '8.0.x'
