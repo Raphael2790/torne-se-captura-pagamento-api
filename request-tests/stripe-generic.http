@@ -21,7 +21,7 @@ Stripe-Signature: {{stripeSignature}}
     "object": {
       "id": "cus_test_12345",
       "object": "customer",
-      "email": "teste@example.com",
+      "email": "cliente@example.com",
       "name": "Cliente Teste"
     }
   }
