@@ -18,6 +18,7 @@ env:
   AWS_REGION: us-east-1
   DOTNET_VERSION: '8.0.x'
   PROJECT_PATH: 'src/TorneSe.CapturaPagamento.Api'
+  SOLUTION_PATH: 'TorneSe.CapturaPagamento.Api.sln'
   S3_BUCKET: 'torne-se-captura-pagamento-api-deployments'
   LAMBDA_FUNCTION_NAME: 'TorneSe-CapturaPagamento-Api'
   
@@ -36,13 +37,13 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           
       - name: Restore dependencies
-        run: dotnet restore ${{ env.PROJECT_PATH }}
+        run: dotnet restore ${{ env.SOLUTION_PATH }}
         
       - name: Build project
-        run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+        run: dotnet build ${{ env.SOLUTION_PATH }} --configuration Release --no-restore
         
       - name: Run tests
-        run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test ${{ env.SOLUTION_PATH }} --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
         continue-on-error: false
 
   package-and-deploy:
