@@ -21,6 +21,12 @@ env:
   SOLUTION_PATH: 'TorneSe.CapturaPagamento.Api.sln'
   S3_BUCKET: 'torne-se-captura-pagamento-api-deployments'
   LAMBDA_FUNCTION_NAME: 'torne-se-api-captura-pagamento'
+  LAMBDA_ROLE_NAME: 'torne-se-fila-processar-pagamentos-role'
+  LAMBDA_LOG_GROUP_NAME: '/aws/lambda/torne-se-fila-processar-pagamentos-log-group'
+  LAMBDA_HANDLER: 'TorneSe.CapturaPagamento.Api'
+  LAMBDA_RUNTIME: 'dotnet8'
+  LAMBDA_TIMEOUT: '900'
+  LAMBDA_MEMORY_SIZE: '512'
   LOG_LEVEL: 'Information'
   APP_ENV: 'production'
   
@@ -97,6 +103,120 @@ jobs:
             aws s3 mb s3://${{ env.S3_BUCKET }} --region ${{ env.AWS_REGION }}
           fi
           
+      - name: Get AWS Account ID
+        id: aws_account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ACCOUNT_ID=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+          echo "ACCOUNT_ID=${ACCOUNT_ID}" >> $GITHUB_ENV
+          
+      - name: Create CloudWatch Log Group if not exists
+        run: |
+          if aws logs describe-log-groups --log-group-name-prefix "${{ env.LAMBDA_LOG_GROUP_NAME }}" --region ${{ env.AWS_REGION }} | grep -q "${{ env.LAMBDA_LOG_GROUP_NAME }}"; then
+            echo "Log group already exists"
+          else
+            aws logs create-log-group \
+              --log-group-name "${{ env.LAMBDA_LOG_GROUP_NAME }}" \
+              --region ${{ env.AWS_REGION }}
+            echo "Log group created successfully"
+          fi
+          
+      - name: Check if IAM Role exists
+        id: check_role
+        run: |
+          if aws iam get-role --role-name ${{ env.LAMBDA_ROLE_NAME }} 2>/dev/null; then
+            echo "ROLE_EXISTS=true" >> $GITHUB_OUTPUT
+            ROLE_ARN=$(aws iam get-role --role-name ${{ env.LAMBDA_ROLE_NAME }} --query 'Role.Arn' --output text)
+            echo "LAMBDA_ROLE_ARN=${ROLE_ARN}" >> $GITHUB_ENV
+            echo "IAM Role exists: ${ROLE_ARN}"
+          else
+            echo "ROLE_EXISTS=false" >> $GITHUB_OUTPUT
+            echo "IAM Role does not exist, will create"
+          fi
+          
+      - name: Create IAM Role for Lambda
+        if: steps.check_role.outputs.ROLE_EXISTS == 'false'
+        run: |
+          # Create trust policy for Lambda
+          cat > trust-policy.json << 'EOF'
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+          EOF
+          
+          # Create the IAM Role
+          ROLE_ARN=$(aws iam create-role \
+            --role-name ${{ env.LAMBDA_ROLE_NAME }} \
+            --assume-role-policy-document file://trust-policy.json \
+            --query 'Role.Arn' \
+            --output text)
+          echo "LAMBDA_ROLE_ARN=${ROLE_ARN}" >> $GITHUB_ENV
+          echo "IAM Role created: ${ROLE_ARN}"
+          
+          # Create the permission policy
+          cat > lambda-policy.json << EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "CreateLogGroup",
+                "Effect": "Allow",
+                "Action": "logs:CreateLogGroup",
+                "Resource": "arn:aws:logs:${{ env.AWS_REGION }}:${{ secrets.ACCOUNT_ID }}:*"
+              },
+              {
+                "Sid": "Log",
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": "arn:aws:logs:${{ env.AWS_REGION }}:${{ secrets.ACCOUNT_ID }}:log-group:${{ env.LAMBDA_LOG_GROUP_NAME }}:*"
+              },
+              {
+                "Sid": "LambdaPermissions",
+                "Effect": "Allow",
+                "Action": [
+                  "sqs:DeleteMessage",
+                  "dynamodb:BatchGetItem",
+                  "dynamodb:BatchWriteItem",
+                  "dynamodb:PutItem",
+                  "dynamodb:DeleteItem",
+                  "sqs:ReceiveMessage",
+                  "dynamodb:GetItem",
+                  "sqs:SendMessage",
+                  "dynamodb:Scan",
+                  "dynamodb:Query",
+                  "dynamodb:UpdateItem",
+                  "sqs:GetQueueAttributes"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+          EOF
+          
+          # Attach inline policy to the role
+          aws iam put-role-policy \
+            --role-name ${{ env.LAMBDA_ROLE_NAME }} \
+            --policy-name "${{ env.LAMBDA_ROLE_NAME }}-policy" \
+            --policy-document file://lambda-policy.json
+          
+          echo "Policy attached to role successfully"
+          
+          # Wait for role to propagate
+          echo "Waiting for IAM role to propagate..."
+          sleep 10
+          
       - name: Upload package to S3
         run: |
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -105,7 +225,46 @@ jobs:
           echo "PACKAGE_KEY=${PACKAGE_KEY}" >> $GITHUB_ENV
           echo "S3_OBJECT_VERSION=$(aws s3api head-object --bucket ${{ env.S3_BUCKET }} --key ${PACKAGE_KEY} --query VersionId --output text)" >> $GITHUB_ENV
           
+      - name: Check if Lambda function exists
+        id: check_lambda
+        run: |
+          if aws lambda get-function --function-name ${{ env.LAMBDA_FUNCTION_NAME }} --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "LAMBDA_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Lambda function exists, will update"
+          else
+            echo "LAMBDA_EXISTS=false" >> $GITHUB_OUTPUT
+            echo "Lambda function does not exist, will create"
+          fi
+          
+      - name: Create Lambda function
+        if: steps.check_lambda.outputs.LAMBDA_EXISTS == 'false'
+        run: |
+          aws lambda create-function \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --runtime ${{ env.LAMBDA_RUNTIME }} \
+            --role ${{ env.LAMBDA_ROLE_ARN }} \
+            --handler ${{ env.LAMBDA_HANDLER }} \
+            --code S3Bucket=${{ env.S3_BUCKET }},S3Key=${{ env.PACKAGE_KEY }} \
+            --timeout ${{ env.LAMBDA_TIMEOUT }} \
+            --memory-size ${{ env.LAMBDA_MEMORY_SIZE }} \
+            --environment "Variables={
+              SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }},
+              APP_ENV=${{ env.APP_ENV }},
+              LOG_LEVEL=${{ env.LOG_LEVEL }},
+              STRIPE_SIGNING_SECRET=${{ secrets.STRIPE_SIGNING_SECRET }}
+            }" \
+            --region ${{ env.AWS_REGION }}
+          echo "::notice::Lambda function created successfully"
+          
+      - name: Wait for Lambda creation to complete
+        if: steps.check_lambda.outputs.LAMBDA_EXISTS == 'false'
+        run: |
+          aws lambda wait function-active \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --region ${{ env.AWS_REGION }}
+          
       - name: Update Lambda function code
+        if: steps.check_lambda.outputs.LAMBDA_EXISTS == 'true'
         run: |
           aws lambda update-function-code \
             --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
@@ -114,17 +273,18 @@ jobs:
             --region ${{ env.AWS_REGION }}
             
       - name: Wait for Lambda update to complete
+        if: steps.check_lambda.outputs.LAMBDA_EXISTS == 'true'
         run: |
           aws lambda wait function-updated \
             --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
             --region ${{ env.AWS_REGION }}
             
       - name: Update Lambda environment variables
+        if: steps.check_lambda.outputs.LAMBDA_EXISTS == 'true'
         run: |
           aws lambda update-function-configuration \
             --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
             --environment "Variables={
-              AWS_REGION=${{ env.AWS_REGION }},
               SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }},
               APP_ENV=${{ env.APP_ENV }},
               LOG_LEVEL=${{ env.LOG_LEVEL }},
