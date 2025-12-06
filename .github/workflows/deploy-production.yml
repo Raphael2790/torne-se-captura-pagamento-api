@@ -20,7 +20,9 @@ env:
   PROJECT_PATH: 'src/TorneSe.CapturaPagamento.Api'
   SOLUTION_PATH: 'TorneSe.CapturaPagamento.Api.sln'
   S3_BUCKET: 'torne-se-captura-pagamento-api-deployments'
-  LAMBDA_FUNCTION_NAME: 'TorneSe-CapturaPagamento-Api'
+  LAMBDA_FUNCTION_NAME: 'torne-se-api-captura-pagamento'
+  LOG_LEVEL: 'Information'
+  APP_ENV: 'production'
   
 jobs:
   build-and-test:
@@ -124,8 +126,8 @@ jobs:
             --environment "Variables={
               AWS_REGION=${{ env.AWS_REGION }},
               SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }},
-              APP_ENV=${{ secrets.APP_ENV }},
-              LOG_LEVEL=${{ secrets.LOG_LEVEL }},
+              APP_ENV=${{ env.APP_ENV }},
+              LOG_LEVEL=${{ env.LOG_LEVEL }},
               STRIPE_SIGNING_SECRET=${{ secrets.STRIPE_SIGNING_SECRET }}
             }" \
             --region ${{ env.AWS_REGION }}
@@ -155,5 +157,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Environment Variables" >> $GITHUB_STEP_SUMMARY
           echo "- AWS_REGION: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
-          echo "- APP_ENV: \${{ secrets.APP_ENV }}" >> $GITHUB_STEP_SUMMARY
-          echo "- LOG_LEVEL: \${{ secrets.LOG_LEVEL }}" >> $GITHUB_STEP_SUMMARY
+          echo "- APP_ENV: \${{ env.APP_ENV }}" >> $GITHUB_STEP_SUMMARY
+          echo "- LOG_LEVEL: \${{ env.LOG_LEVEL }}" >> $GITHUB_STEP_SUMMARY
