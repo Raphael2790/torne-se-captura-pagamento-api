@@ -87,7 +87,7 @@ public class SqsPaymentEventPublisherTests
                     req.MessageAttributes.ContainsKey("EventId") &&
                     req.MessageAttributes.ContainsKey("StripeEventId")),
                 It.IsAny<CancellationToken>()),
-            Times.Never);
+            Times.Once);
     }
 
     [Fact]
