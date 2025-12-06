@@ -8,6 +8,11 @@ on:
       - 'fix/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 env:
   DOTNET_VERSION: '8.0.x'
   PROJECT_PATH: 'src/TorneSe.CapturaPagamento.Api'
@@ -35,15 +40,6 @@ jobs:
       - name: Run unit tests
         run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
         continue-on-error: false
-        
-      - name: Publish test results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Unit Test Results
-          path: '**/*.trx'
-          reporter: dotnet-trx
-          fail-on-error: true
           
       - name: Code coverage
         run: |
@@ -103,22 +99,18 @@ jobs:
           BRANCH_TYPE="${{ steps.branch_info.outputs.branch_type }}"
           PR_TITLE="${{ steps.branch_info.outputs.pr_title }}"
           
-          # Define PR labels based on branch type
+          # Define PR emoji and labels based on branch type
           case "$BRANCH_TYPE" in
             feature)
-              LABELS="enhancement,feature"
               EMOJI="✨"
               ;;
             bug)
-              LABELS="bug,bugfix"
               EMOJI="🐛"
               ;;
             fix)
-              LABELS="fix,hotfix"
               EMOJI="🔧"
               ;;
             *)
-              LABELS="enhancement"
               EMOJI="📝"
               ;;
           esac
@@ -154,21 +146,50 @@ jobs:
           ---
           **Branch:** \`${{ steps.branch_info.outputs.branch_name }}\`
           **Commit:** \`${{ github.sha }}\`
+          **Tipo:** ${BRANCH_TYPE}
           **Criado automaticamente pelo workflow**"
           
+          # Create PR
           gh pr create \
             --title "${EMOJI} ${BRANCH_TYPE^}: ${PR_TITLE}" \
             --body "$PR_BODY" \
             --base main \
-            --head "${{ steps.branch_info.outputs.branch_name }}" \
-            --label "$LABELS"
+            --head "${{ steps.branch_info.outputs.branch_name }}"
+            
+      - name: Add labels to PR
+        if: steps.check_pr.outputs.pr_exists == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: |
+          sleep 2  # Wait for PR to be created
+          PR_NUMBER=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq '.[0].number')
+          BRANCH_TYPE="${{ steps.branch_info.outputs.branch_type }}"
+          
+          if [ -n "$PR_NUMBER" ]; then
+            # Try to add labels based on branch type
+            case "$BRANCH_TYPE" in
+              feature)
+                gh pr edit $PR_NUMBER --add-label "enhancement" || echo "Label 'enhancement' not found, skipping"
+                gh pr edit $PR_NUMBER --add-label "feature" || echo "Label 'feature' not found, skipping"
+                ;;
+              bug)
+                gh pr edit $PR_NUMBER --add-label "bug" || echo "Label 'bug' not found, skipping"
+                gh pr edit $PR_NUMBER --add-label "bugfix" || echo "Label 'bugfix' not found, skipping"
+                ;;
+              fix)
+                gh pr edit $PR_NUMBER --add-label "fix" || echo "Label 'fix' not found, skipping"
+                gh pr edit $PR_NUMBER --add-label "hotfix" || echo "Label 'hotfix' not found, skipping"
+                ;;
+            esac
+          fi
             
       - name: Add PR comment
         if: steps.check_pr.outputs.pr_exists == '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sleep 2  # Wait for PR to be created
+          sleep 3  # Wait for PR to be created
           PR_NUMBER=$(gh pr list --head "${{ steps.branch_info.outputs.branch_name }}" --base main --json number --jq '.[0].number')
           
           if [ -n "$PR_NUMBER" ]; then
@@ -178,7 +199,10 @@ jobs:
             - ✅ Testes Unitários: Todos passando
             - ✅ Cobertura de Código: Disponível nos artefatos
             
-            Este PR está pronto para revisão! 🚀"
+            Este PR está pronto para revisão! 🚀
+            
+            ---
+            **Branch Type:** \`${{ steps.branch_info.outputs.branch_type }}\`"
           fi
           
       - name: PR already exists
