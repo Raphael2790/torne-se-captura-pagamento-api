@@ -129,10 +129,14 @@ Aplique os cinco princípios SOLID em todo o código:
 - Testes devem ser rápidos e determinísticos
 - Use mocks/stubs para isolar dependências
 - Nomes de testes devem descrever o cenário e resultado esperado
+- Use a nomeclatura NomeDoMetodo_Quando_EntaoResultado
+- Estrutura de pastas deve refletir a estrutura do código fonte
+- Quando necessário reutilize o construtor para inciar os mocks
+- Utilize as bibliotecas xUnit e Moq para testes em C#
 
 ### Cobertura de Testes
 
-- Busque pelo menos 80% de cobertura de código
+- Busque pelo menos 90% de cobertura de código
 - Priorize cobertura de lógica de negócio crítica
 - 100% de cobertura não garante ausência de bugs, mas é um bom indicador
 - Use ferramentas de cobertura para identificar código não testado
